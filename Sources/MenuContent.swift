@@ -15,8 +15,7 @@ struct MenuContent: View {
             Divider()
             actions
         }
-        .padding(12)
-        .frame(width: 300)
+        .frame(width: 300)  // frame owns the full width; padding lives inside each section
     }
 
     // MARK: - Sections
@@ -35,25 +34,18 @@ struct MenuContent: View {
             }
             Spacer()
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
         .padding(.bottom, 8)
     }
 
     private var stats: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(batteryColor)
-                        .frame(width: geo.size.width * monitor.percentageRemaining, height: 6)
-                        .animation(.easeInOut(duration: 0.3), value: monitor.percentageRemaining)
-                }
-            }
-            .frame(height: 6)
-            .padding(.vertical, 4)
+            // Progress bar — ProgressView avoids GeometryReader's greedy sizing
+            ProgressView(value: monitor.percentageRemaining)
+                .tint(batteryColor)
+                .animation(.easeInOut(duration: 0.3), value: monitor.percentageRemaining)
+                .padding(.vertical, 4)
 
             // Cost (primary — used for battery %)
             statRow(label: "API cost",
@@ -71,6 +63,7 @@ struct MenuContent: View {
                         value: updated.formatted(date: .omitted, time: .shortened))
             }
         }
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
@@ -87,6 +80,7 @@ struct MenuContent: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
@@ -132,7 +126,9 @@ struct MenuContent: View {
                 .keyboardShortcut("q", modifiers: .command)
             }
         }
+        .padding(.horizontal, 12)
         .padding(.top, 8)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Helpers
