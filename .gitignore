@@ -1,0 +1,9 @@
+# Build output
+ClaudeBattery.app/
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
