@@ -6,7 +6,7 @@ struct MenuContent: View {
     @State private var launchAtLogin = (SMAppService.mainApp.status == .enabled)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             header
             Divider()
             stats
@@ -15,7 +15,8 @@ struct MenuContent: View {
             Divider()
             actions
         }
-        .frame(width: 300)  // frame owns the full width; padding lives inside each section
+        // Each section fills its own width; the outer padding is the sole source of margins.
+        .padding(14)
     }
 
     // MARK: - Sections
@@ -34,27 +35,21 @@ struct MenuContent: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.vertical, 6)
     }
 
     private var stats: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Progress bar — ProgressView avoids GeometryReader's greedy sizing
             ProgressView(value: monitor.percentageRemaining)
                 .tint(batteryColor)
                 .animation(.easeInOut(duration: 0.3), value: monitor.percentageRemaining)
-                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity)        // force full width
+                .padding(.vertical, 2)
 
-            // Cost (primary — used for battery %)
             statRow(label: "API cost",
                     value: "\(monitor.costUsed.formatted(.currency(code: "USD"))) / \(monitor.costLimit.formatted(.currency(code: "USD")))")
-
-            // Raw tokens (secondary — for reference)
             statRow(label: "Tokens (in+out)",
                     value: monitor.tokensUsed.formatted())
-
             statRow(label: "Resets in",
                     value: monitor.timeUntilReset)
 
@@ -63,7 +58,7 @@ struct MenuContent: View {
                         value: updated.formatted(date: .omitted, time: .shortened))
             }
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
         .padding(.vertical, 8)
     }
 
@@ -79,18 +74,20 @@ struct MenuContent: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .frame(maxWidth: .infinity)            // force full width
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
         .padding(.vertical, 8)
     }
 
     private var actions: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: $launchAtLogin) {
                 Label("Launch at Login", systemImage: "power")
                     .font(.callout)
             }
             .toggleStyle(.switch)
+            .frame(maxWidth: .infinity, alignment: .leading)  // force full width
             .onChange(of: launchAtLogin) { enabled in
                 do {
                     if enabled {
@@ -125,10 +122,10 @@ struct MenuContent: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut("q", modifiers: .command)
             }
+            .frame(maxWidth: .infinity)            // force full width
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
+        .padding(.vertical, 6)
     }
 
     // MARK: - Helpers
@@ -143,6 +140,7 @@ struct MenuContent: View {
                 .font(.callout)
                 .fontWeight(.medium)
         }
+        .frame(maxWidth: .infinity)               // force full width
     }
 
     private var batteryIcon: String {
