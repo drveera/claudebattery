@@ -24,6 +24,7 @@ It finds all assistant messages from the current 5-hour billing window, sums the
 - **Token counts** — used vs. your plan limit
 - **Plan picker** — switch between Pro / Max 5× / Max 20× in one click
 - **Auto-refresh** every 60 seconds; manual refresh with ⌘R
+- **Launch at Login** toggle built into the popover
 - **No Dock icon** — lives purely in the menu bar
 
 ## Requirements
@@ -41,7 +42,14 @@ make run      # build and launch immediately
 make install  # copy to /Applications
 ```
 
-To have it start at login, add `ClaudeBattery.app` to **System Settings → General → Login Items**.
+### Launch at Login
+
+1. Run `make install` to place the app in `/Applications`
+2. Open the menu bar popover and flip the **Launch at Login** toggle
+
+That's it — macOS will start ClaudeBattery automatically on every login. Toggle it off the same way to disable.
+
+> **Note:** Register the login item from the app's final location. If you move `ClaudeBattery.app` after enabling the toggle, flip it off and back on so macOS picks up the new path.
 
 ## Usage
 
@@ -56,6 +64,7 @@ Updated        11:42 AM
 
 Plan limit  [ Pro (~8k) | Max 5× | Max 20× ]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Launch at Login  ●
 ↺ Refresh                    ✕ Quit
 ```
 
