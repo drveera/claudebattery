@@ -22,6 +22,7 @@ build: $(SOURCES) Info.plist
 		-framework SwiftUI \
 		-framework AppKit \
 		-framework Foundation \
+		-framework ServiceManagement \
 		$(SOURCES) \
 		-o $(BINARY)
 	@cp Info.plist $(BUNDLE)/Contents/Info.plist

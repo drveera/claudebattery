@@ -1,7 +1,9 @@
 import SwiftUI
+import ServiceManagement
 
 struct MenuContent: View {
     @EnvironmentObject var monitor: UsageMonitor
+    @State private var launchAtLogin = (SMAppService.mainApp.status == .enabled)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,27 +85,47 @@ struct MenuContent: View {
     }
 
     private var actions: some View {
-        HStack {
-            Button {
-                monitor.refresh()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+        VStack(spacing: 6) {
+            Toggle(isOn: $launchAtLogin) {
+                Label("Launch at Login", systemImage: "power")
                     .font(.callout)
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut("r", modifiers: .command)
-
-            Spacer()
-
-            Button {
-                NSApplication.shared.terminate(nil)
-            } label: {
-                Label("Quit", systemImage: "xmark.circle")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
+            .toggleStyle(.switch)
+            .onChange(of: launchAtLogin) { enabled in
+                do {
+                    if enabled {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                } catch {
+                    // Revert the toggle if registration fails
+                    launchAtLogin = !enabled
+                }
             }
-            .buttonStyle(.plain)
-            .keyboardShortcut("q", modifiers: .command)
+
+            HStack {
+                Button {
+                    monitor.refresh()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                        .font(.callout)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("r", modifiers: .command)
+
+                Spacer()
+
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Label("Quit", systemImage: "xmark.circle")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("q", modifiers: .command)
+            }
         }
         .padding(.top, 8)
     }
