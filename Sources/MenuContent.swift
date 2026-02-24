@@ -11,7 +11,7 @@ struct MenuContent: View {
             Divider()
             stats
             Divider()
-            planPicker
+            budgetPicker
             Divider()
             actions
         }
@@ -55,8 +55,14 @@ struct MenuContent: View {
             .frame(height: 6)
             .padding(.vertical, 4)
 
-            statRow(label: "Tokens used",
-                    value: "\(monitor.tokensUsed.formatted()) / \(monitor.tokenLimit.formatted())")
+            // Cost (primary — used for battery %)
+            statRow(label: "API cost",
+                    value: "\(monitor.costUsed.formatted(.currency(code: "USD"))) / \(monitor.costLimit.formatted(.currency(code: "USD")))")
+
+            // Raw tokens (secondary — for reference)
+            statRow(label: "Tokens (in+out)",
+                    value: monitor.tokensUsed.formatted())
+
             statRow(label: "Resets in",
                     value: monitor.timeUntilReset)
 
@@ -68,15 +74,15 @@ struct MenuContent: View {
         .padding(.vertical, 8)
     }
 
-    private var planPicker: some View {
+    private var budgetPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Plan limit")
+            Text("5h budget (API-equivalent)")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            Picker("", selection: $monitor.tokenLimit) {
-                Text("Pro (~8k)").tag(8_000 as Int)
-                Text("Max 5×  (~40k)").tag(40_000 as Int)
-                Text("Max 20× (~88k)").tag(88_000 as Int)
+            Picker("", selection: $monitor.costLimit) {
+                Text("Pro (~$5)").tag(5.0 as Double)
+                Text("Max 5× (~$25)").tag(25.0 as Double)
+                Text("Max 20× (~$100)").tag(100.0 as Double)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -99,7 +105,6 @@ struct MenuContent: View {
                         try SMAppService.mainApp.unregister()
                     }
                 } catch {
-                    // Revert the toggle if registration fails
                     launchAtLogin = !enabled
                 }
             }
