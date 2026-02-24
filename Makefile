@@ -23,6 +23,7 @@ build: $(SOURCES) Info.plist
 		-framework AppKit \
 		-framework Foundation \
 		-framework ServiceManagement \
+		-framework Security \
 		$(SOURCES) \
 		-o $(BINARY)
 	@cp Info.plist $(BUNDLE)/Contents/Info.plist

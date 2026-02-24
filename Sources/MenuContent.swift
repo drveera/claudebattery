@@ -10,8 +10,10 @@ struct MenuContent: View {
             header
             Divider()
             stats
-            Divider()
-            budgetPicker
+            if !monitor.usingOAuth {
+                Divider()
+                budgetPicker
+            }
             Divider()
             actions
         }
@@ -29,9 +31,16 @@ struct MenuContent: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("ClaudeBattery")
                     .font(.headline)
-                Text("\(Int(monitor.percentageRemaining * 100))% remaining")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Text("\(Int(monitor.percentageRemaining * 100))% remaining")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let plan = monitor.subscriptionType {
+                        Text("• \(formattedPlan(plan))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
             Spacer()
         }
@@ -43,13 +52,23 @@ struct MenuContent: View {
             ProgressView(value: monitor.percentageRemaining)
                 .tint(batteryColor)
                 .animation(.easeInOut(duration: 0.3), value: monitor.percentageRemaining)
-                .frame(maxWidth: .infinity)        // force full width
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 2)
 
-            statRow(label: "API cost",
-                    value: "\(monitor.costUsed.formatted(.currency(code: "USD"))) / \(monitor.costLimit.formatted(.currency(code: "USD")))")
-            statRow(label: "Tokens (in+out)",
-                    value: monitor.tokensUsed.formatted())
+            if monitor.usingOAuth {
+                statRow(label: "5h usage",
+                        value: "\(Int(monitor.fiveHourUtilization ?? 0))% used")
+                if let sevenDay = monitor.sevenDayUtilization {
+                    statRow(label: "7d usage",
+                            value: "\(Int(sevenDay))% used")
+                }
+            } else {
+                statRow(label: "API cost",
+                        value: "\(monitor.costUsed.formatted(.currency(code: "USD"))) / \(monitor.costLimit.formatted(.currency(code: "USD")))")
+                statRow(label: "Tokens (in+out)",
+                        value: monitor.tokensUsed.formatted())
+            }
+
             statRow(label: "Resets in",
                     value: monitor.timeUntilReset)
 
@@ -58,7 +77,7 @@ struct MenuContent: View {
                         value: updated.formatted(date: .omitted, time: .shortened))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
     }
 
@@ -74,9 +93,9 @@ struct MenuContent: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: .infinity)            // force full width
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
     }
 
@@ -87,7 +106,7 @@ struct MenuContent: View {
                     .font(.callout)
             }
             .toggleStyle(.switch)
-            .frame(maxWidth: .infinity, alignment: .leading)  // force full width
+            .frame(maxWidth: .infinity, alignment: .leading)
             .onChange(of: launchAtLogin) { enabled in
                 do {
                     if enabled {
@@ -122,9 +141,9 @@ struct MenuContent: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut("q", modifiers: .command)
             }
-            .frame(maxWidth: .infinity)            // force full width
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)  // force full width
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
     }
 
@@ -140,7 +159,17 @@ struct MenuContent: View {
                 .font(.callout)
                 .fontWeight(.medium)
         }
-        .frame(maxWidth: .infinity)               // force full width
+        .frame(maxWidth: .infinity)
+    }
+
+    private func formattedPlan(_ type: String) -> String {
+        switch type.lowercased() {
+        case "claude_pro":     return "Pro"
+        case "claude_max_5":   return "Max 5×"
+        case "claude_max_20":  return "Max 20×"
+        case "claude_max":     return "Max"
+        default:               return type
+        }
     }
 
     private var batteryIcon: String {

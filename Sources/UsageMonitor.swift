@@ -1,21 +1,32 @@
 import Foundation
 import Combine
+import Security
 
 class UsageMonitor: ObservableObject {
 
     // MARK: - Published state
 
-    @Published var tokensUsed: Int = 0        // raw input+output tokens (display only)
-    @Published var costUsed: Double = 0.0     // USD cost equivalent (used for battery %)
+    @Published var tokensUsed: Int = 0        // raw input+output tokens (JSONL fallback)
+    @Published var costUsed: Double = 0.0     // USD cost equivalent (JSONL fallback)
     @Published var costLimit: Double {        // user-set budget per 5h window in USD
         didSet { UserDefaults.standard.set(costLimit, forKey: "costLimit") }
     }
     @Published var resetAt: Date? = nil
     @Published var lastUpdated: Date? = nil
 
+    // OAuth-sourced data
+    @Published var fiveHourUtilization: Double? = nil  // 0–100 from API
+    @Published var sevenDayUtilization: Double? = nil  // 0–100 from API
+    @Published var sevenDayResetsAt: Date? = nil
+    @Published var subscriptionType: String? = nil
+    @Published var usingOAuth: Bool = false
+
     // MARK: - Derived
 
     var percentageRemaining: Double {
+        if let util = fiveHourUtilization {
+            return max(0.0, min(1.0, 1.0 - util / 100.0))
+        }
         let limit = max(0.000001, costLimit)
         return max(0.0, min(1.0, (limit - costUsed) / limit))
     }
@@ -36,8 +47,8 @@ class UsageMonitor: ObservableObject {
     struct ModelPricing {
         let inputPerM: Double
         let outputPerM: Double
-        let cacheWrite5mPerM: Double   // 5-minute ephemeral cache write
-        let cacheWrite1hPerM: Double   // 1-hour ephemeral cache write
+        let cacheWrite5mPerM: Double
+        let cacheWrite1hPerM: Double
         let cacheReadPerM: Double
 
         func cost(input: Int, output: Int,
@@ -90,7 +101,7 @@ class UsageMonitor: ObservableObject {
 
     init() {
         let stored = UserDefaults.standard.double(forKey: "costLimit")
-        self.costLimit = stored > 0 ? stored : 5.0  // default ≈ Pro plan budget
+        self.costLimit = stored > 0 ? stored : 5.0
 
         refresh()
 
@@ -100,9 +111,118 @@ class UsageMonitor: ObservableObject {
             .store(in: &cancellables)
     }
 
+    // MARK: - Keychain
+
+    private struct OAuthCredential {
+        let accessToken: String
+        let refreshToken: String
+        let expiresAt: Date
+        let subscriptionType: String?
+    }
+
+    private func readKeychainCredential() -> OAuthCredential? {
+        let query: [String: Any] = [
+            kSecClass as String:       kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnData as String:  true,
+            kSecMatchLimit as String:  kSecMatchLimitOne
+        ]
+
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let accessToken  = oauth["accessToken"]  as? String,
+              let refreshToken = oauth["refreshToken"] as? String
+        else { return nil }
+
+        // expiresAt may be Unix milliseconds (JS Date.now()) or seconds
+        let expiresAtRaw = oauth["expiresAt"] as? Double ?? 0
+        let expiresAt = expiresAtRaw > 1e10
+            ? Date(timeIntervalSince1970: expiresAtRaw / 1000.0)
+            : Date(timeIntervalSince1970: expiresAtRaw)
+
+        let subscriptionType = oauth["subscriptionType"] as? String
+        return OAuthCredential(accessToken: accessToken,
+                               refreshToken: refreshToken,
+                               expiresAt: expiresAt,
+                               subscriptionType: subscriptionType)
+    }
+
+    // MARK: - OAuth API
+
+    private func fetchOAuthUsage(token: String, subscriptionType: String?,
+                                  completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
+            completion(false)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+            guard
+                let data,
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let fiveHour = json["five_hour"] as? [String: Any],
+                let utilization = fiveHour["utilization"] as? Double
+            else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+
+            let resetDate = self.parseDate(fiveHour["resets_at"] as? String)
+
+            var sevenDayUtil: Double? = nil
+            var sevenDayReset: Date? = nil
+            if let sevenDay = json["seven_day"] as? [String: Any] {
+                sevenDayUtil  = sevenDay["utilization"] as? Double
+                sevenDayReset = self.parseDate(sevenDay["resets_at"] as? String)
+            }
+
+            DispatchQueue.main.async {
+                self.fiveHourUtilization = utilization
+                self.resetAt             = resetDate
+                self.sevenDayUtilization = sevenDayUtil
+                self.sevenDayResetsAt    = sevenDayReset
+                self.subscriptionType    = subscriptionType
+                self.usingOAuth          = true
+                self.lastUpdated         = Date()
+                completion(true)
+            }
+        }.resume()
+    }
+
+    private func parseDate(_ str: String?) -> Date? {
+        guard let str else { return nil }
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: str) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return f2.date(from: str)
+    }
+
     // MARK: - Refresh
 
     func refresh() {
+        // Try OAuth first; fall back to local JSONL if unavailable or expired
+        if let credential = readKeychainCredential(),
+           credential.expiresAt.timeIntervalSinceNow > -60 {
+            fetchOAuthUsage(token: credential.accessToken,
+                            subscriptionType: credential.subscriptionType) { [weak self] success in
+                if !success { self?.refreshFromJSONL() }
+            }
+        } else {
+            refreshFromJSONL()
+        }
+    }
+
+    private func refreshFromJSONL() {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let self else { return }
             let entries = self.loadEntries()
@@ -111,6 +231,7 @@ class UsageMonitor: ObservableObject {
                 self.tokensUsed  = tokens
                 self.costUsed    = cost
                 self.resetAt     = reset
+                self.usingOAuth  = false
                 self.lastUpdated = Date()
             }
         }
@@ -120,8 +241,8 @@ class UsageMonitor: ObservableObject {
 
     private struct Entry {
         let timestamp: Date
-        let tokens: Int     // raw input + output (for display)
-        let cost: Double    // USD cost (for battery %)
+        let tokens: Int
+        let cost: Double
     }
 
     private func loadEntries() -> [Entry] {
@@ -163,12 +284,11 @@ class UsageMonitor: ObservableObject {
             let model  = msg["model"] as? String ?? ""
             let p      = UsageMonitor.pricingFor(model: model)
 
-            let input      = usage["input_tokens"]              as? Int ?? 0
-            let output     = usage["output_tokens"]             as? Int ?? 0
+            let input      = usage["input_tokens"]                as? Int ?? 0
+            let output     = usage["output_tokens"]               as? Int ?? 0
             let cacheTotal = usage["cache_creation_input_tokens"] as? Int ?? 0
-            let cacheRead  = usage["cache_read_input_tokens"]   as? Int ?? 0
+            let cacheRead  = usage["cache_read_input_tokens"]     as? Int ?? 0
 
-            // Use the per-duration breakdown when available; fall back to 5m rate for the total
             let breakdown = usage["cache_creation"] as? [String: Any]
             let cache5m   = breakdown?["ephemeral_5m_input_tokens"] as? Int ?? cacheTotal
             let cache1h   = breakdown?["ephemeral_1h_input_tokens"] as? Int ?? 0
