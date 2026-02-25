@@ -6,13 +6,19 @@ A lightweight macOS menu bar app that shows your [Claude Code](https://claude.ai
 
 ## How it works
 
-Claude Code writes a JSONL log for every conversation under `~/.claude/projects/`. ClaudeBattery reads those files directly — **no credentials, no network calls, no API keys required**.
-
-It finds all assistant messages from the current 5-hour billing window, sums their token counts, and displays the result as a draining battery.
+ClaudeBattery first tries to read usage data directly from Anthropic's servers using the OAuth token that Claude Code stores in your macOS Keychain. This gives you the exact same numbers shown on the claude.ai settings page.
 
 ```
-~/.claude/projects/**/*.jsonl  →  parse tokens  →  menu bar icon
+Keychain (Claude Code OAuth token)  →  api.anthropic.com/api/oauth/usage  →  menu bar icon
 ```
+
+If no valid OAuth token is found, it falls back to estimating usage from local JSONL logs:
+
+```
+~/.claude/projects/**/*.jsonl  →  parse tokens + cost  →  menu bar icon
+```
+
+No credentials to configure — ClaudeBattery reuses the token Claude Code already stored.
 
 ## Features
 
@@ -20,9 +26,10 @@ It finds all assistant messages from the current 5-hour billing window, sums the
   - 🟢 Green — plenty left (> 25%)
   - 🟠 Orange — getting low (10–25%)
   - 🔴 Red — nearly empty (< 10%)
-- **Countdown** to next reset (5-hour rolling window)
-- **Token counts** — used vs. your plan limit
-- **Plan picker** — switch between Pro / Max 5× / Max 20× in one click
+- **Server-synced stats** — pulls real utilization from Anthropic's API (same source as claude.ai)
+- **5-hour and 7-day usage** displayed side by side
+- **Plan detection** — reads your subscription type (Pro / Max) from the Keychain automatically
+- **Countdown** to next 5-hour reset
 - **Auto-refresh** every 60 seconds; manual refresh with ⌘R
 - **Launch at Login** toggle built into the popover
 - **No Dock icon** — lives purely in the menu bar
@@ -31,6 +38,7 @@ It finds all assistant messages from the current 5-hour billing window, sums the
 
 - macOS 13 Ventura or later
 - Xcode Command Line Tools (`xcode-select --install`)
+- Claude Code installed and signed in (for OAuth sync)
 
 ## Build & install
 
@@ -55,36 +63,57 @@ That's it — macOS will start ClaudeBattery automatically on every login. Toggl
 
 Click the battery icon in the menu bar to see:
 
+**OAuth mode** (when Claude Code is signed in):
 ```
-🔋 ClaudeBattery          69% remaining
+🔋 ClaudeBattery          92% remaining • Pro
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Tokens used    5,520 / 8,000
-Resets in      2h 14m
+5h usage       8% used
+7d usage       59% used
+Resets in      3h 12m
 Updated        11:42 AM
-
-Plan limit  [ Pro (~8k) | Max 5× | Max 20× ]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Launch at Login  ●
 ↺ Refresh                    ✕ Quit
 ```
 
-Set your plan limit once with the picker — it's saved automatically.
+**Fallback mode** (local JSONL estimate):
+```
+🔋 ClaudeBattery          69% remaining
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+API cost       $3.45 / $5.00
+Tokens (in+out) 5,520
+Resets in      2h 14m
+Updated        11:42 AM
 
-## How the 5-hour window is calculated
+5h budget   [ Pro (~$5) | Max 5× (~$25) | Max 20× (~$100) ]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Launch at Login  ●
+↺ Refresh                    ✕ Quit
+```
 
-Anthropic's Claude Code billing resets on a **rolling 5-hour window** that starts with your first message in a session. ClaudeBattery replicates this locally:
+## Keychain access
+
+On first launch, macOS will show a prompt:
+
+> *"ClaudeBattery" wants to use the "Claude Code-credentials" item from your login keychain.*
+
+Click **Always Allow**. ClaudeBattery only reads the token — it never modifies it or uses it for anything other than the usage API call.
+
+## How the fallback estimation works
+
+When no OAuth token is available, ClaudeBattery estimates usage from local files:
 
 1. Scan all `.jsonl` files under `~/.claude/projects/`
-2. Extract `input_tokens + output_tokens` from every `assistant` message
-3. Sort by timestamp and group into blocks — a new block starts whenever there's a gap of more than 5 hours between messages
-4. Sum the tokens in the most recent block; if that block's 5-hour window has already expired, show 0
+2. Extract token counts from every `assistant` message and compute cost using Anthropic's published per-model rates
+3. Sort by timestamp and group into 5-hour blocks (new block when gap > 5 hours)
+4. Sum cost in the most recent block; if the block's window has expired, show 0
 
 ## Project structure
 
 ```
 Sources/
   ClaudeBatteryApp.swift  — App entry point + menu bar label
-  UsageMonitor.swift      — JSONL parsing and window calculation
+  UsageMonitor.swift      — Keychain reading, OAuth API, JSONL fallback
   MenuContent.swift       — Popover UI
 Info.plist                — LSUIElement (no Dock icon)
 Makefile                  — Build, run, install targets
