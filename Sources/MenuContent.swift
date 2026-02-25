@@ -164,11 +164,11 @@ struct MenuContent: View {
 
     private func formattedPlan(_ type: String) -> String {
         switch type.lowercased() {
-        case "claude_pro":     return "Pro"
-        case "claude_max_5":   return "Max 5×"
-        case "claude_max_20":  return "Max 20×"
-        case "claude_max":     return "Max"
-        default:               return type
+        case "pro", "claude_pro":           return "Pro"
+        case "max_5", "claude_max_5":       return "Max 5×"
+        case "max_20", "claude_max_20":     return "Max 20×"
+        case "max", "claude_max":           return "Max"
+        default:                            return type
         }
     }
 
